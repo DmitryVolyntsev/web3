@@ -39,7 +39,7 @@ contract Auction {
         auctionStartTime = block.number;
     }
 
-    function bid() public payable {
+    function bid(address highestBidder, uint highestBid, uint currentTime, uint currentPrice) public payable {
         require(
             !ended,
             "Auction already ended."
@@ -50,8 +50,8 @@ contract Auction {
             "The minimal ask is higher."
         );
 
-        currentTime = block.number
-        currentPrice = 0.99**(currentTime - auctionStartTime) * startPrice //1% price decrease per block
+        currentTime = block.number;
+        currentPrice = 99**(currentTime - auctionStartTime)/100**(currentTime - auctionStartTime) * startPrice; //1% price decrease per block
 
         if (msg.value >= currentPrice * amount) {
 
