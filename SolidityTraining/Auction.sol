@@ -2,38 +2,41 @@
 pragma solidity >=0.5.0 <0.7.0;
 
 library Balances {
-    function move(mapping(address => uint256) storage balances, address from, address to, uint amount) internal {
-        require(balances[from] >= amount);
-        require(balances[to] + amount >= balances[to]);
-        balances[from] -= amount;
-        balances[to] += amount;
+    function move(mapping(address => mapping (address => uint256)) storage balances, address from, address to, address token, uint amount) internal {
+        require(balances[from][token] >= amount);
+        require(balances[to][token] + amount >= balances[to][token]);
+        balances[from][token] -= amount;
+        balances[to][token] += amount;
     }
 }
 
 contract Auction {
     address payable public beneficiary; // address that will receive Ether for token
     address public token; // address of the token that is going to be sold
+    uint public amount; // amount of the token that is going to be sold
     uint public startPrice; // initial price
     uint public auctionEndPrice; // minimal price above that the auction is continue
+    uint public auctionStartTime; // current block at the moment of cotract deploy
     bool ended; // the end of the auction
 
-    mapping(address => uint256) balances;
     using Balances for *;
-    mapping(address => mapping (address => uint256)) allowed;
+    mapping(address => mapping (address => uint256)) balances;
 
-    event LowestPriceDecreased(uint amount); // price changed, because there were no bids for the certain amount of time
-    event AuctionEnded(address winner, uint amount); //the bid with price >= lowestPrice is created
+    event AuctionEnded(address winner, uint value, uint price, uint amount); //the bid with price >= lowestPrice is created
 
     constructor(
         address payable _beneficiary,
         address  _token,
+        uint _amount,
         uint _startPrice,
         uint _auctionEndPrice
     ) public {
         beneficiary = _beneficiary;
-        token = _token
-        startPrice = _startPrice
+        token = _token;
+        startPrice = _startPrice;
+        amount = _amount;
         auctionEndPrice = _auctionEndPrice;
+        auctionStartTime = block.number;
     }
 
     function bid() public payable {
@@ -43,38 +46,23 @@ contract Auction {
         );
 
         require(
-            msg.value > auctionEndPrice,
-            "There already is a higher bid."
+            msg.value >= auctionEndPrice * amount,
+            "The minimal ask is higher."
         );
 
-        if (highestBid != 0) {
-            pendingReturns[highestBidder] += highestBid;
+        currentTime = block.number
+        currentPrice = 0.99**(currentTime - auctionStartTime) * startPrice //1% price decrease per block
+
+        if (msg.value >= currentPrice * amount) {
+
+            highestBidder = msg.sender;
+            highestBid = msg.value;
+            ended = true;
+
+            beneficiary.transfer(highestBid);
+            balances.move(beneficiary, msg.sender, token, amount);
+
+            emit AuctionEnded(msg.sender, msg.value, currentPrice, amount);
         }
-        highestBidder = msg.sender;
-        highestBid = msg.value;
-        emit HighestBidIncreased(msg.sender, msg.value);
-    }
-
-    function withdraw() public returns (bool) {
-        uint amount = pendingReturns[msg.sender];
-        if (amount > 0) {
-            pendingReturns[msg.sender] = 0;
-
-            if (!msg.sender.send(amount)) {
-                pendingReturns[msg.sender] = amount;
-                return false;
-            }
-        }
-        return true;
-    }
-
-    function auctionEnd() public {
-        require(now >= auctionEndTime, "Auction not yet ended.");
-        require(!ended, "auctionEnd has already been called.");
-
-        ended = true;
-        emit AuctionEnded(highestBidder, highestBid);
-
-        beneficiary.transfer(highestBid);
     }
 }
